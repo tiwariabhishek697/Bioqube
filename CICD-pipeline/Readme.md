@@ -54,14 +54,22 @@ helm upgrade --install fastapi-app-canary ./helm/fastapi-app -n default \
     --set replicaCount=1
 
 
-**Health Check Canary**
-Stage: health-check-canary
 
-Validates the health of the canary deployment by checking the /health endpoint.
-Retrieves the IP addresses of the canary services in both AWS and GCP.
-Sends HTTP requests to the /health endpoint and checks for a 200 status code.
-If the health check fails, the canary deployment is rolled back.
+## Pipeline Stages Explanation
 
+### 2. Health Check Canary
+
+**Stage**: `health-check-canary`
+
+This stage validates the health of the canary deployment by performing the following steps:
+
+1. Retrieves the IP addresses of the canary services in both AWS and GCP.
+2. Sends HTTP requests to the `/health` endpoint of the canary services.
+3. Checks if the HTTP status code is `200`.
+4. If the health check fails, the canary deployment is rolled back using Helm.
+
+**Script**:
+```bash
 CANARY_AWS_IP=$(kubectl get svc fastapi-app-canary -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 CANARY_GCP_IP=$(kubectl get svc fastapi-app-canary -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://$CANARY_AWS_IP/health")
@@ -72,72 +80,14 @@ if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
     exit 1
 fi
 
-### Stage: wait-for-canary
 
-**Description:** Observes the canary deployment for 10 minutes to ensure stability.
+### 3. Wait for Canary
 
-**Actions:**
+**Stage**: `wait-for-canary`
 
-* Uses a simple `sleep` command to wait for 10 minutes (600 seconds).
-* Prints a message indicating the observation period.
+This stage observes the canary deployment for a specified period (10 minutes) to ensure stability before promoting it to production.
 
-**Code:**
-
+**Script**:
 ```bash
 echo "Observing canary deployment for 10 minutes..."
 sleep 600
-Stage: promote-to-production
-Description: Promotes the application to production in both AWS and GCP clusters.
-
-Actions:
-
-AWS:
-Updates the kubeconfig for the AWS EKS cluster.
-Upgrades the fastapi-app Helm release to production with replicaCount=3.
-Uninstalls the canary deployment (fastapi-app-canary).
-GCP:
-Retrieves the credentials for the GCP GKE cluster.
-Upgrades the fastapi-app Helm release to production with replicaCount=3.
-Uninstalls the canary deployment (fastapi-app-canary).
-Code:
-
-Bash
-
-aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_AWS
-helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
-    --set image.repository=<aws-account-id>.dkr.ecr.$AWS_[REGION.amazonaws.com/$IMAGE_NAME](https://www.google.com/search?q=https://REGION.amazonaws.com/%24IMAGE_NAME) \
-    --set image.tag=$CI_COMMIT_SHA \
-    --set replicaCount=3
-helm uninstall fastapi-app-canary -n default
-
-gcloud container clusters get-credentials $CLUSTER_GCP --region $GCP_REGION --project $GCP_PROJECT
-helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
-    --set image.repository=$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$IMAGE_NAME \
-    --set image.tag=$CI_COMMIT_SHA \
-    --set replicaCount=3
-helm uninstall fastapi-app-canary -n default
-Stage: health-check-production
-Description: Validates the health of the production deployment by checking the /health endpoint.
-
-Actions:
-
-Retrieves the IP addresses of the production fastapi-app services in both AWS and GCP.
-Sends HTTP requests to the /health endpoint of each service using curl.
-Checks for a 200 status code.
-If either health check fails:
-Prints a message indicating the failure.
-Rolls back the fastapi-app Helm release to the previous version.
-Exits with a non-zero status code (1).
-Code:
-
-Bash
-
-PROD_AWS_IP=<span class="math-inline">\(kubectl get svc fastapi\-app \-n default \-o jsonpath\='\{\.status\.loadBalancer\.ingress\[0\]\.ip\}'\)
-PROD\_GCP\_IP\=</span>(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://<span class="math-inline">PROD\_AWS\_IP/health"\)
-STATUS\_GCP\=</span>(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_GCP_IP/health")
-if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
-    echo "Production health check failed. Rolling back..."
-    helm rollback fastapi-app 1 -n default
-    exit 1
-fi
