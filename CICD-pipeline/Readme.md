@@ -71,24 +71,41 @@ if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
     helm rollback fastapi-app-canary 1 -n default
     exit 1
 fi
-**Wait for Canary**
-Stage: wait-for-canary
 
-Observes the canary deployment for 10 minutes to ensure stability.
-Uses a simple sleep command to wait.
+### Stage: wait-for-canary
 
+**Description:** Observes the canary deployment for 10 minutes to ensure stability.
+
+**Actions:**
+
+* Uses a simple `sleep` command to wait for 10 minutes (600 seconds).
+* Prints a message indicating the observation period.
+
+**Code:**
+
+```bash
 echo "Observing canary deployment for 10 minutes..."
 sleep 600
-**Promote to Production**
 Stage: promote-to-production
+Description: Promotes the application to production in both AWS and GCP clusters.
 
-Promotes the application to production in both AWS and GCP clusters.
-Deploys the application with three replicas (replicaCount=3).
-Removes the canary deployment after successful promotion.
+Actions:
+
+AWS:
+Updates the kubeconfig for the AWS EKS cluster.
+Upgrades the fastapi-app Helm release to production with replicaCount=3.
+Uninstalls the canary deployment (fastapi-app-canary).
+GCP:
+Retrieves the credentials for the GCP GKE cluster.
+Upgrades the fastapi-app Helm release to production with replicaCount=3.
+Uninstalls the canary deployment (fastapi-app-canary).
+Code:
+
+Bash
 
 aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_AWS
 helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
-    --set image.repository=<aws-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME \
+    --set image.repository=<aws-account-id>.dkr.ecr.$AWS_[REGION.amazonaws.com/$IMAGE_NAME](https://www.google.com/search?q=https://REGION.amazonaws.com/%24IMAGE_NAME) \
     --set image.tag=$CI_COMMIT_SHA \
     --set replicaCount=3
 helm uninstall fastapi-app-canary -n default
@@ -99,18 +116,26 @@ helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
     --set image.tag=$CI_COMMIT_SHA \
     --set replicaCount=3
 helm uninstall fastapi-app-canary -n default
-**Health Check Production**
 Stage: health-check-production
+Description: Validates the health of the production deployment by checking the /health endpoint.
 
-Validates the health of the production deployment by checking the /health endpoint.
-Retrieves the IP addresses of the production services in both AWS and GCP.
-Sends HTTP requests to the /health endpoint and checks for a 200 status code.
-If the health check fails, the production deployment is rolled back.
+Actions:
 
-PROD_AWS_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-PROD_GCP_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_AWS_IP/health")
-STATUS_GCP=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_GCP_IP/health")
+Retrieves the IP addresses of the production fastapi-app services in both AWS and GCP.
+Sends HTTP requests to the /health endpoint of each service using curl.
+Checks for a 200 status code.
+If either health check fails:
+Prints a message indicating the failure.
+Rolls back the fastapi-app Helm release to the previous version.
+Exits with a non-zero status code (1).
+Code:
+
+Bash
+
+PROD_AWS_IP=<span class="math-inline">\(kubectl get svc fastapi\-app \-n default \-o jsonpath\='\{\.status\.loadBalancer\.ingress\[0\]\.ip\}'\)
+PROD\_GCP\_IP\=</span>(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://<span class="math-inline">PROD\_AWS\_IP/health"\)
+STATUS\_GCP\=</span>(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_GCP_IP/health")
 if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
     echo "Production health check failed. Rolling back..."
     helm rollback fastapi-app 1 -n default
