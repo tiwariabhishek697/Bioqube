@@ -5,7 +5,6 @@ Retrieve the Grafana admin password:
 kubectl get secret --namespace monitoring grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
 
 Access Grafana via the service's external IP or port-forwarding:
-bash
 
 kubectl port-forward --namespace monitoring svc/grafana 3000:80
 Login to Grafana at http://ip:3000 using the username admin and the retrieved password.
