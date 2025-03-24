@@ -52,3 +52,67 @@ helm upgrade --install fastapi-app-canary ./helm/fastapi-app -n default \
     --set image.repository=$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$IMAGE_NAME \
     --set image.tag=$CI_COMMIT_SHA \
     --set replicaCount=1
+
+
+**Health Check Canary**
+Stage: health-check-canary
+
+Validates the health of the canary deployment by checking the /health endpoint.
+Retrieves the IP addresses of the canary services in both AWS and GCP.
+Sends HTTP requests to the /health endpoint and checks for a 200 status code.
+If the health check fails, the canary deployment is rolled back.
+
+CANARY_AWS_IP=$(kubectl get svc fastapi-app-canary -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+CANARY_GCP_IP=$(kubectl get svc fastapi-app-canary -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://$CANARY_AWS_IP/health")
+STATUS_GCP=$(curl -s -o /dev/null -w "%{http_code}" "http://$CANARY_GCP_IP/health")
+if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
+    echo "Canary health check failed. Rolling back..."
+    helm rollback fastapi-app-canary 1 -n default
+    exit 1
+fi
+**Wait for Canary**
+Stage: wait-for-canary
+
+Observes the canary deployment for 10 minutes to ensure stability.
+Uses a simple sleep command to wait.
+
+echo "Observing canary deployment for 10 minutes..."
+sleep 600
+**Promote to Production**
+Stage: promote-to-production
+
+Promotes the application to production in both AWS and GCP clusters.
+Deploys the application with three replicas (replicaCount=3).
+Removes the canary deployment after successful promotion.
+
+aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_AWS
+helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
+    --set image.repository=<aws-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME \
+    --set image.tag=$CI_COMMIT_SHA \
+    --set replicaCount=3
+helm uninstall fastapi-app-canary -n default
+
+gcloud container clusters get-credentials $CLUSTER_GCP --region $GCP_REGION --project $GCP_PROJECT
+helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
+    --set image.repository=$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$IMAGE_NAME \
+    --set image.tag=$CI_COMMIT_SHA \
+    --set replicaCount=3
+helm uninstall fastapi-app-canary -n default
+**Health Check Production**
+Stage: health-check-production
+
+Validates the health of the production deployment by checking the /health endpoint.
+Retrieves the IP addresses of the production services in both AWS and GCP.
+Sends HTTP requests to the /health endpoint and checks for a 200 status code.
+If the health check fails, the production deployment is rolled back.
+
+PROD_AWS_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+PROD_GCP_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_AWS_IP/health")
+STATUS_GCP=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_GCP_IP/health")
+if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
+    echo "Production health check failed. Rolling back..."
+    helm rollback fastapi-app 1 -n default
+    exit 1
+fi
