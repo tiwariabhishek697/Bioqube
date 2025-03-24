@@ -120,3 +120,56 @@ terraform plan
 
 # Apply the infrastructure
 terraform apply
+
+
+
+
+# Application Deployment
+
+## 2. Application Deployment
+
+### Build and Deploy the FastAPI Application
+
+#### Build the Docker Image:
+
+```bash
+docker build -t fastapi-app:latest .
+
+
+
+
+Push the Image to AWS ECR and GCP Artifact Registry:
+AWS ECR:
+
+bash
+Copy Code
+# Login to AWS ECR
+aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <aws_account_id>.dkr.ecr.<region>.amazonaws.com
+
+# Tag the image
+docker tag fastapi-app:latest <aws_account_id>.dkr.ecr.<region>.amazonaws.com/fastapi-app:latest
+
+# Push the image
+docker push <aws_account_id>.dkr.ecr.<region>.amazonaws.com/fastapi-app:latest
+GCP Artifact Registry:
+
+bash
+Copy Code
+# Configure Docker authentication
+gcloud auth configure-docker
+
+# Tag the image
+docker tag fastapi-app:latest <gcp_region>-docker.pkg.dev/<project_id>/fastapi-app/fastapi-app:latest
+
+# Push the image
+docker push <gcp_region>-docker.pkg.dev/<project_id>/fastapi-app/fastapi-app:latest
+Deploy the Application to Kubernetes Clusters:
+bash
+Copy Code
+helm install fastapi-app ./Containerization\ and\ Deployment/Helm/fastapi-app/
+Configure Horizontal Pod Autoscaling (HPA):
+Ensure HPA is enabled in the Helm chart or apply manually:
+
+bash
+Copy Code
+kubectl autoscale deployment fastapi-app --cpu-percent=50 --min=3 --max=10
