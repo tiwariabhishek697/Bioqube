@@ -137,4 +137,13 @@ docker build -t fastapi-app:latest .
 
 
 
+### Push Images to AWS ECR
+
+To push your Docker images to Amazon Elastic Container Registry (ECR), follow these commands:
+
+#### 1. Login to AWS ECR
+```bash
+aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <aws_account_id>.dkr.ecr.<region>.amazonaws.com
+
+
 
