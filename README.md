@@ -169,9 +169,42 @@ Deploy the Application to Kubernetes Clusters:
 helm install fastapi-app ./Containerization\ and\ Deployment/Helm/fastapi-app/
 Configure Horizontal Pod Autoscaling (HPA):
 Ensure HPA is enabled in the Helm chart or apply manually:
-
-
 kubectl autoscale deployment fastapi-app --cpu-percent=50 --min=3 --max=10
+
+Testing and Validation
+1. Fault Tolerance Testing Script
+
+#!/bin/bash
+
+# Simulate cluster failure
+kubectl config use-context cluster1
+kubectl drain node --ignore-daemonsets
+
+# Verify traffic routing
+for i in {1..10}; do
+  curl -v https://your-app-endpoint/
+  sleep 2
+done
+
+# Restore cluster
+kubectl uncordon node
+2. Security Testing Commands
+
+# Test RBAC
+kubectl auth can-i create pods --as=system:serviceaccount:default:app-sa
+
+# Test Network Policies
+kubectl run test-pod --image=busybox -- wget -O- http://fastapi-app-svc
+
+# Test TLS
+curl -v https://your-app-endpoint/
+3. Observability Testing
+
+# Verify Prometheus metrics
+curl http://prometheus:9090/api/v1/query?query=up
+
+# Test alerting
+kubectl patch deployment fastapi-app -p '{"spec": {"template": {"spec": {"containers": [{"name": "fastapi-app", "env": [{"name": "HEALTH_CHECK_FAIL", "value": "true"}]}]}}}}'
 
 
 
