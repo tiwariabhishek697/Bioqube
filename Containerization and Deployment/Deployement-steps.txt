@@ -1,0 +1,33 @@
+Deployment Steps
+Step 1: Build and Push Docker Image
+Build the Docker image:
+bash
+Copy Code
+docker build -t <your-docker-image>:<tag> .
+Push the image to a container registry (e.g., AWS ECR, GCP Artifact Registry):
+bash
+Copy Code
+docker push <your-docker-image>:<tag>
+Step 2: Deploy Helm Chart
+Add the Helm repository (if needed):
+bash
+Copy Code
+helm repo add stable https://charts.helm.sh/stable
+helm repo update
+Deploy the Helm chart:
+bash
+Copy Code
+helm install fastapi-app ./helm/fastapi-app
+Step 3: Verify Deployment
+Check the pods:
+bash
+Copy Code
+kubectl get pods
+Check the service:
+bash
+Copy Code
+kubectl get svc
+Test the application:
+bash
+Copy Code
+curl http://<load-balancer-ip>

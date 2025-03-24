@@ -1,0 +1,79 @@
+stages:
+  - build
+  - scan
+  - deploy-canary
+  - health-check-canary
+  - wait-for-canary
+  - promote-to-production
+  - health-check-production
+
+variables:
+  AWS_REGION: "us-east-1"
+  GCP_PROJECT: "<your-gcp-project-id>"
+  GCP_REGION: "us-central1"
+  IMAGE_NAME: "<your-docker-image>"
+  CLUSTER_AWS: "<aws-cluster-name>"
+  CLUSTER_GCP: "<gcp-cluster-name>"
+  GCP_SERVICE_ACCOUNT_KEY: $GCP_SERVICE_ACCOUNT_KEY
+
+deploy-canary:
+  stage: deploy-canary
+  script:
+    - aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_AWS
+    - helm upgrade --install fastapi-app-canary ./helm/fastapi-app -n default \
+        --set image.repository=<aws-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME \
+        --set image.tag=$CI_COMMIT_SHA \
+        --set replicaCount=1
+    - gcloud container clusters get-credentials $CLUSTER_GCP --region $GCP_REGION --project $GCP_PROJECT
+    - helm upgrade --install fastapi-app-canary ./helm/fastapi-app -n default \
+        --set image.repository=$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$IMAGE_NAME \
+        --set image.tag=$CI_COMMIT_SHA \
+        --set replicaCount=1
+
+health-check-canary:
+  stage: health-check-canary
+  script:
+    - CANARY_AWS_IP=$(kubectl get svc fastapi-app-canary -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    - CANARY_GCP_IP=$(kubectl get svc fastapi-app-canary -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    - STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://$CANARY_AWS_IP/health")
+    - STATUS_GCP=$(curl -s -o /dev/null -w "%{http_code}" "http://$CANARY_GCP_IP/health")
+    - if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
+        echo "Canary health check failed. Rolling back..."
+        helm rollback fastapi-app-canary 1 -n default
+        exit 1
+      fi
+
+wait-for-canary:
+  stage: wait
+  script:
+    - echo "Observing canary deployment for 10 minutes..."
+    - sleep 600
+
+promote-to-production:
+  stage: promote-to-production
+  script:
+    - aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_AWS
+    - helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
+        --set image.repository=<aws-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME \
+        --set image.tag=$CI_COMMIT_SHA \
+        --set replicaCount=3
+    - helm uninstall fastapi-app-canary -n default
+    - gcloud container clusters get-credentials $CLUSTER_GCP --region $GCP_REGION --project $GCP_PROJECT
+    - helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
+        --set image.repository=$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$IMAGE_NAME \
+        --set image.tag=$CI_COMMIT_SHA \
+        --set replicaCount=3
+    - helm uninstall fastapi-app-canary -n default
+
+health-check-production:
+  stage: health-check-production
+  script:
+    - PROD_AWS_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    - PROD_GCP_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    - STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_AWS_IP/health")
+    - STATUS_GCP=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_GCP_IP/health")
+    - if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
+        echo "Production health check failed. Rolling back..."
+        helm rollback fastapi-app 1 -n default
+        exit 1
+      fi

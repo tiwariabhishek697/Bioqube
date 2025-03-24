@@ -1,0 +1,31 @@
+replicaCount: 3
+
+image:
+  repository: <your-docker-image>
+  tag: <tag>
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+
+hpa:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: <your-domain>
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: fastapi-tls-secret
+      hosts:
+        - <your-domain>
