@@ -153,3 +153,25 @@ docker push <aws_account_id>.dkr.ecr.<region>.amazonaws.com/fastapi-app:latest
 
 
 
+###GCP Artifact Registry:
+
+
+# Configure Docker authentication
+gcloud auth configure-docker
+
+# Tag the image
+docker tag fastapi-app:latest <gcp_region>-docker.pkg.dev/<project_id>/fastapi-app/fastapi-app:latest
+
+# Push the image
+docker push <gcp_region>-docker.pkg.dev/<project_id>/fastapi-app/fastapi-app:latest
+Deploy the Application to Kubernetes Clusters:
+
+helm install fastapi-app ./Containerization\ and\ Deployment/Helm/fastapi-app/
+Configure Horizontal Pod Autoscaling (HPA):
+Ensure HPA is enabled in the Helm chart or apply manually:
+
+
+kubectl autoscale deployment fastapi-app --cpu-percent=50 --min=3 --max=10
+
+
+
