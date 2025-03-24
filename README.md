@@ -207,4 +207,56 @@ curl http://prometheus:9090/api/v1/query?query=up
 kubectl patch deployment fastapi-app -p '{"spec": {"template": {"spec": {"containers": [{"name": "fastapi-app", "env": [{"name": "HEALTH_CHECK_FAIL", "value": "true"}]}]}}}}'
 
 
+### 4. Promote to Production
+
+**Stage**: `promote-to-production`
+
+This stage promotes the application to production in both AWS and GCP clusters. It performs the following steps:
+
+1. Updates the kubeconfig for AWS EKS and deploys the application to production with three replicas (`replicaCount=3`).
+2. Removes the canary deployment from AWS.
+3. Updates the kubeconfig for GCP GKE and deploys the application to production with three replicas (`replicaCount=3`).
+4. Removes the canary deployment from GCP.
+
+**Script**:
+```bash
+aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_AWS
+helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
+    --set image.repository=<aws-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME \
+    --set image.tag=$CI_COMMIT_SHA \
+    --set replicaCount=3
+helm uninstall fastapi-app-canary -n default
+
+gcloud container clusters get-credentials $CLUSTER_GCP --region $GCP_REGION --project $GCP_PROJECT
+helm upgrade --install fastapi-app ./helm/fastapi-app -n default \
+    --set image.repository=$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$IMAGE_NAME \
+    --set image.tag=$CI_COMMIT_SHA \
+    --set replicaCount=3
+helm uninstall fastapi-app-canary -n default
+
+
+
+
+### 5. Health Check Production
+
+**Stage**: `health-check-production`
+
+This stage validates the health of the production deployment by performing the following steps:
+
+1. Retrieves the IP addresses of the production services in both AWS and GCP.
+2. Sends HTTP requests to the `/health` endpoint of the production services.
+3. Checks if the HTTP status code is `200`.
+4. If the health check fails, the production deployment is rolled back using Helm.
+
+**Script**:
+```bash
+PROD_AWS_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+PROD_GCP_IP=$(kubectl get svc fastapi-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+STATUS_AWS=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_AWS_IP/health")
+STATUS_GCP=$(curl -s -o /dev/null -w "%{http_code}" "http://$PROD_GCP_IP/health")
+if [ "$STATUS_AWS" -ne 200 ] || [ "$STATUS_GCP" -ne 200 ]; then
+    echo "Production health check failed. Rolling back..."
+    helm rollback fastapi-app 1 -n default
+    exit 1
+fi
 
