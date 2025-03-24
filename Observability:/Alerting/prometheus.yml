@@ -1,0 +1,22 @@
+scrape_configs:
+  - job_name: "fastapi-health"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]  # Use the HTTP module to check for 2xx responses
+    static_configs:
+      - targets: ["http://<fastapi-service-ip>:80/health"]  # Replace with the FastAPI service IP or DNS
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter.monitoring.svc.cluster.local:9115  # Blackbox Exporter service
+
+
+
+
+#metrics_path: /probe: Specifies the Blackbox Exporter's probe endpoint.
+#params: module: [http_2xx]: Ensures the endpoint returns a 2xx HTTP status code.
+#targets: The /health endpoint of the FastAPI app.
+#relabel_configs: Configures the target labels for the Blackbox Exporter.

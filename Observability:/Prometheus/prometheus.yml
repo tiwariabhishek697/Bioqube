@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s # How often to scrape targets by default.
+  evaluation_interval: 15s # How often to evaluate rules.
+
+scrape_configs:
+  # Scrape configuration for the FastAPI application
+  - job_name: "fastapi-app"
+    static_configs:
+      - targets: 
+          - "<fastapi-service-ip>:80" # Replace <fastapi-service-ip> with the actual service IP or DNS name

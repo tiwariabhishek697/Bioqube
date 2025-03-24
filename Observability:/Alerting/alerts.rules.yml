@@ -1,0 +1,19 @@
+groups:
+  - name: fastapi-alerts
+    rules:
+      - alert: HealthEndpointUnhealthy
+        expr: probe_success == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Health endpoint is unhealthy"
+          description: "The /health endpoint of the FastAPI app is returning unhealthy status."
+
+
+
+
+#expr: probe_success == 0: Checks if the probe fails.
+#for: 1m: Ensures the condition persists for 1 minute before triggering the alert.
+#labels: Adds metadata to the alert (e.g., severity).
+#annotations: Provides additional information about the alert.

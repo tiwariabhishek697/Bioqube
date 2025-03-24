@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-traffic
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: fastapi
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: allowed-app
+      ports:
+        - protocol: TCP
+          port: 80
+  policyTypes:
+    - Ingress
